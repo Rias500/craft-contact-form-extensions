@@ -15,6 +15,8 @@ use Craft;
 use craft\base\Plugin;
 use craft\contactform\events\SendEvent;
 use craft\contactform\Mailer;
+use craft\contactform\models\Submission;
+use craft\elements\Asset;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\TemplateEvent;
 use craft\helpers\App;
@@ -122,8 +124,28 @@ class ContactFormExtensions extends Plugin
             }
 
             $submission = $e->submission;
+
+            $attNames = [];
+            if ($this->settings->attachmentVolumeHandle && $submission->attachment) {
+                $volume = Craft::$app->getVolumes()->getVolumeByHandle($this->settings->attachmentVolumeHandle);
+                if ($volume) {
+                    foreach ($submission->attachment as $attachment) {
+                        $date = date_create();
+                        $asset = new Asset();
+                        $asset->tempFilePath = $attachment->tempName;
+                        $asset->filename = $date->getTimestamp().'_'.$attachment->name;
+                        $asset->newFolderId = Craft::$app->assets->getRootFolderByVolumeId($volume->id)->id;
+                        $asset->volumeId = $volume->id;
+                        $asset->avoidFilenameConflicts = true;
+                        $asset->setScenario(Asset::SCENARIO_CREATE);
+                        $result = Craft::$app->getElements()->saveElement($asset);
+                        array_push($attNames, $asset->id . "-" . $asset->filename);
+                    }
+                }
+            }
+
             if ($this->settings->enableDatabase) {
-                $this->contactFormExtensionsService->saveSubmission($submission);
+                $this->contactFormExtensionsService->saveSubmission($submission, implode(', ', $attNames));
             }
 
             // Set the overridden "toEmail" setting
